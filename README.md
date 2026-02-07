@@ -4,11 +4,11 @@
 
 ## What is this?
 
-You are hosting a gathering. You want music. 
-Your friends want to play music. 
+You are hosting a gathering. You want music.
+Your friends want to play music.
 **The problem:** Your friends have terrible taste, and passing the phone around results in a chaotic mix of sad indie folk followed immediately by Death Grips.
 
-**The Solution:** **Moojik**. 
+**The Solution:** **Moojik**.
 
 This is a local web app that gives your guests the *illusion* of choice while you, the Host, retain absolute, dictatorial power from the safety of your command line.
 
@@ -25,7 +25,7 @@ They get a shiny web interface (`http://<YOUR_IP>:5000`).
 You get a hackers-only Terminal User Interface (TUI).
 - **See the future:** View the queue before it plays.
 - **Judge silently:** See the song title and the culprit's IP address.
-- **Wield the Hammer:** 
+- **Wield the Hammer:**
     - Press `SPACE` to graciously allow the song to grace your speakers.
     - Press `D` to banish the song (and the submitter's hopes) to the Shadow Realm (Rejected List).
 
@@ -70,4 +70,4 @@ A: It's a Flask dev server running in a thread next to a TUI loop. It's about as
 A: It doesn't anymore! I fixed the threading deadlock. If it freezes now, it's probably your computer judging you.
 
 ---
-*Built with hate for bad music and love for Python.*
+*Built with hate for bad music and love for TUI.*
