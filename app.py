@@ -7,7 +7,15 @@ import requests
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, asdict
 from typing import List, Optional
-from flask import Flask, request, render_template_string, flash, redirect, url_for
+from flask import (
+    Flask,
+    request,
+    render_template_string,
+    flash,
+    redirect,
+    url_for,
+    jsonify,
+)
 from textual.app import App, ComposeResult
 from textual.widgets import (
     Header,
@@ -40,6 +48,8 @@ queue_lock = threading.RLock()
 music_playlist: List[QueueItem] = []
 played_history: List[QueueItem] = []
 rejected_history: List[QueueItem] = []
+current_video_id: Optional[str] = None
+player_opened: bool = False
 
 AVERAGE_SONG_DURATION_MIN = 4
 
@@ -80,10 +90,13 @@ HTML_TEMPLATE = """
         .empty-msg { text-align: center; color: #888; padding: 1.5rem; font-style: italic; }
         .wait-time { font-weight: bold; color: #e67e22; }
         .user-tag { background: #e8f4f8; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #2980b9; }
+        .nav-link { display: block; text-align: center; margin-bottom: 1rem; color: #3498db; text-decoration: none; }
+        .nav-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="container">
+        <a href="/player" target="_blank" class="nav-link">Open Player Window</a>
         <h1>Add Music to Queue</h1>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -192,6 +205,51 @@ HTML_TEMPLATE = """
 </html>
 """
 
+PLAYER_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Moojik Player</title>
+    <style>
+        body { background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        #player-container { width: 80%; height: 80%; display: flex; justify-content: center; align-items: center; background: #222; border-radius: 10px; }
+        iframe { width: 100%; height: 100%; border: none; border-radius: 10px; }
+        .status { margin-top: 20px; font-size: 1.2em; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="player-container">
+        <div class="status">Waiting for music...</div>
+    </div>
+    
+    <script>
+        let currentVideoId = null;
+        
+        function pollForUpdates() {
+            fetch('/api/current')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.video_id && data.video_id !== currentVideoId) {
+                        currentVideoId = data.video_id;
+                        updatePlayer(currentVideoId);
+                    }
+                })
+                .catch(err => console.error("Error polling:", err));
+        }
+        
+        function updatePlayer(videoId) {
+            const container = document.getElementById('player-container');
+            container.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+        }
+        
+        // Poll every 2 seconds
+        setInterval(pollForUpdates, 2000);
+    </script>
+</body>
+</html>
+"""
+
 
 def is_valid_youtube_url(url):
     youtube_regex = (
@@ -254,6 +312,30 @@ def index():
             rejected=list(rejected_history),
             avg_duration=AVERAGE_SONG_DURATION_MIN,
         )
+
+
+def extract_video_id(url):
+    """Extracts the video ID from a YouTube URL."""
+    youtube_regex = (
+        r"(https?://)?(www\.)?"
+        r"(youtube|youtu|youtube-nocookie)\.(com|be)/"
+        r"(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})"
+    )
+    match = re.match(youtube_regex, url)
+    if match:
+        return match.group(6)
+    return None
+
+
+@flask_app.route("/player")
+def player():
+    return render_template_string(PLAYER_TEMPLATE)
+
+
+@flask_app.route("/api/current")
+def current_song():
+    with queue_lock:
+        return jsonify({"video_id": current_video_id})
 
 
 def run_flask():
@@ -414,6 +496,7 @@ class MusicQueueApp(App):
             pass
 
     def process_item(self, index: int, action: str) -> None:
+        global current_video_id
         with queue_lock:
             if 0 <= index < len(music_playlist):
                 item = music_playlist.pop(index)
@@ -421,8 +504,15 @@ class MusicQueueApp(App):
 
                 if action == "play":
                     played_history.append(item)
-                    webbrowser.open(item.url)
-                    self.notify(f"Playing: {item.title}")
+                    # Update current video ID instead of opening browser
+                    vid_id = extract_video_id(item.url)
+                    if vid_id:
+                        current_video_id = vid_id
+                        self.notify(f"Now Playing: {item.title}")
+                    else:
+                        self.notify(
+                            f"Could not extract ID for: {item.title}", severity="error"
+                        )
                 else:
                     rejected_history.append(item)
                     self.notify(f"Rejected: {item.title}")
