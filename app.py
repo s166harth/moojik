@@ -1,3 +1,4 @@
+import json
 import threading
 import webbrowser
 import queue
@@ -339,7 +340,37 @@ def current_song():
 
 
 def run_flask():
-    flask_app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    import socket
+    from zeroconf import ServiceInfo, Zeroconf
+
+    zeroconf = None
+    info = None
+    try:
+        # Get local IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80)) # Connect to an external host to get local IP
+        ip_address = s.getsockname()[0]
+        s.close()
+
+        desc = {'path': '/'}
+        info = ServiceInfo(
+            "_http._tcp.local.",
+            "Moojik Queue._http._tcp.local.",
+            addresses=[socket.inet_aton(ip_address)],
+            port=5000,
+            properties=desc,
+            server="moojik.local.",
+        )
+        zeroconf = Zeroconf()
+        zeroconf.register_service(info)
+        print(f"mDNS service registered: http://moojik.local:5000 (or http://{ip_address}:5000)")
+
+        flask_app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    finally:
+        if zeroconf:
+            print("Unregistering mDNS service...")
+            zeroconf.unregister_service(info)
+            zeroconf.close()
 
 
 # --- Textual TUI App ---
@@ -373,6 +404,7 @@ class MusicQueueApp(App):
         ("q", "quit", "Quit"),
         ("d", "delete_item", "Reject Selected"),
         ("space", "play_item", "Play Selected"),
+        ("e", "export_playlist", "Export Played"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -518,6 +550,35 @@ class MusicQueueApp(App):
                     self.notify(f"Rejected: {item.title}")
 
                 self.refresh_tables()
+
+    def action_export_playlist(self) -> None:
+        with queue_lock:
+            if not played_history:
+                self.notify("Played history is empty. Nothing to export.", severity="warning")
+                return
+
+            export_data = []
+            for item in played_history:
+                artist = "Unknown Artist"
+                song = item.title
+                if " - " in item.title:
+                    parts = item.title.split(" - ", 1)
+                    artist = parts[0].strip()
+                    song = parts[1].strip()
+                
+                export_data.append({
+                    "song": song,
+                    "artist": artist,
+                    "url": item.url
+                })
+            
+            try:
+                file_name = "played_playlist.json"
+                with open(file_name, "w", encoding="utf-8") as f:
+                    json.dump(export_data, f, indent=4, ensure_ascii=False)
+                self.notify(f"Exported played history to {file_name}", severity="information")
+            except Exception as e:
+                self.notify(f"Error exporting playlist: {e}", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "add-btn":
