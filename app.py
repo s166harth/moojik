@@ -7,7 +7,7 @@ import datetime
 import requests
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import List, Optional, Dict
 from flask import (
     Flask,
     request,
@@ -64,7 +64,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Music Queue Submission</title>
+    <title>Music Queue Submission & Search</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #f4f4f9; color: #333; }
         .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -93,6 +93,69 @@ HTML_TEMPLATE = """
         .user-tag { background: #e8f4f8; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #2980b9; }
         .nav-link { display: block; text-align: center; margin-bottom: 1rem; color: #3498db; text-decoration: none; }
         .nav-link:hover { text-decoration: underline; }
+
+        /* Search specific styles */
+        #search-results { margin-top: 1rem; }
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .search-result-item:hover {
+            background-color: #f1f1f1;
+        }
+        .search-result-item img {
+            width: 80px;
+            height: 45px;
+            margin-right: 10px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+        .search-result-item .details {
+            flex-grow: 1;
+        }
+        .search-result-item .title {
+            font-weight: bold;
+            color: #333;
+        }
+        .search-result-item .channel {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .search-result-item .add-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        .search-result-item .add-btn:hover {
+            background: #218838;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .notification.show {
+            opacity: 1;
+        }
+        .notification.error {
+            background-color: #f44336;
+        }
     </style>
 </head>
 <body>
@@ -108,7 +171,7 @@ HTML_TEMPLATE = """
             {% endif %}
         {% endwith %}
         
-        <form method="post">
+        <form method="post" id="add-url-form">
             <div class="form-group">
                 <label for="username">Your Name:</label>
                 <input type="text" id="username" name="username" placeholder="Enter your name" required>
@@ -119,6 +182,18 @@ HTML_TEMPLATE = """
             </div>
             <button type="submit">Add to Queue</button>
         </form>
+
+        <div class="section">
+            <h2>YouTube Search</h2>
+            <div class="form-group">
+                <label for="search-query">Search YouTube:</label>
+                <input type="text" id="search-query" placeholder="Search for songs or artists...">
+            </div>
+            <button id="search-button">Search</button>
+            <div id="search-results">
+                <!-- Search results will be loaded here -->
+            </div>
+        </div>
 
         <div class="section">
             <h2>Current Queue</h2>
@@ -202,6 +277,117 @@ HTML_TEMPLATE = """
             {% endif %}
         </div>
     </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script>
+        document.getElementById('search-button').addEventListener('click', searchYouTube);
+        document.getElementById('search-query').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchYouTube();
+            }
+        });
+
+        function showNotification(message, isError = false) {
+            const notificationDiv = document.getElementById('notification');
+            notificationDiv.textContent = message;
+            notificationDiv.className = 'notification show';
+            if (isError) {
+                notificationDiv.classList.add('error');
+            } else {
+                notificationDiv.classList.remove('error');
+            }
+            setTimeout(() => {
+                notificationDiv.classList.remove('show');
+            }, 3000);
+        }
+
+        async function searchYouTube() {
+            const query = document.getElementById('search-query').value;
+            if (!query) {
+                showNotification('Please enter a search query.', true);
+                return;
+            }
+
+            const searchResultsDiv = document.getElementById('search-results');
+            searchResultsDiv.innerHTML = '<p>Searching...</p>';
+
+            try {
+                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                searchResultsDiv.innerHTML = '';
+                if (data.results && data.results.length > 0) {
+                    data.results.forEach(result => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'search-result-item';
+                        itemDiv.innerHTML = `
+                            <img src="${result.thumbnail}" alt="Thumbnail">
+                            <div class="details">
+                                <div class="title">${result.title}</div>
+                                <div class="channel">${result.channel}</div>
+                            </div>
+                            <button class="add-btn" data-title="${result.title}" data-url="${result.url}">Add to Queue</button>
+                        `;
+                        searchResultsDiv.appendChild(itemDiv);
+                    });
+
+                    // Add event listeners to the new "Add to Queue" buttons
+                    searchResultsDiv.querySelectorAll('.add-btn').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const title = this.dataset.title;
+                            const url = this.dataset.url;
+                            addSearchResultToQueue(title, url);
+                        });
+                    });
+
+                } else {
+                    searchResultsDiv.innerHTML = '<p>No results found.</p>';
+                }
+            } catch (error) {
+                console.error('Error during YouTube search:', error);
+                showNotification('Error searching YouTube.', true);
+                searchResultsDiv.innerHTML = '<p class="error">Error searching YouTube.</p>';
+            }
+        }
+
+        async function addSearchResultToQueue(title, url) {
+            const usernameInput = document.getElementById('username');
+            const username = usernameInput ? usernameInput.value : 'Anonymous';
+
+            if (!username) {
+                showNotification('Please enter your name before adding a song from search results.', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/add_to_queue', { // Use new API endpoint
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        username: username,
+                        url: url,
+                        title_from_search: title
+                    })
+                });
+                const result = await response.json(); // Expect JSON response
+
+                if (result.status === 'success') {
+                    showNotification(result.message);
+                    // Optionally, refresh only the queue section or use WebSockets for real-time updates
+                    // For now, a full reload is simplest to update the queue display
+                    window.location.reload(); 
+                } else {
+                    showNotification(result.message, true);
+                }
+            } catch (error) {
+                console.error('Error adding song from search results:', error);
+                showNotification('Error adding song to queue.', true);
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -279,32 +465,80 @@ def get_youtube_title(url):
     return "Unknown Title"
 
 
-@flask_app.route("/", methods=["GET", "POST"])
+def perform_youtube_search(query: str) -> List[Dict[str, str]]:
+    """Performs a YouTube search and returns a list of video titles, URLs, and thumbnails."""
+    search_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    results = []
+    try:
+        response = requests.get(search_url, headers=headers, timeout=10)
+        response.raise_for_status() # Raise an exception for HTTP errors
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # YouTube's HTML structure can change, making scraping fragile.
+        # This attempts to find video results.
+        # Look for script tags containing 'var ytInitialData'
+        script_tags = soup.find_all('script')
+        yt_initial_data = None
+        for script in script_tags:
+            if 'var ytInitialData' in str(script):
+                yt_initial_data = script
+                break
+
+        if yt_initial_data:
+            # Extract JSON string from the script tag
+            json_str = str(yt_initial_data).split('var ytInitialData = ')[1].split(';</script>')[0]
+            data = json.loads(json_str)
+
+            # Navigate through the JSON structure to find video results
+            # This path is highly dependent on YouTube's internal API and can break.
+            contents = data.get('contents', {}).get('twoColumnSearchResultsRenderer', {}).get('primaryContents', {}).get('sectionListRenderer', {}).get('contents', [])
+            
+            for section in contents:
+                if 'itemSectionRenderer' in section:
+                    for item in section['itemSectionRenderer'].get('contents', []):
+                        if 'videoRenderer' in item:
+                            video = item['videoRenderer']
+                            video_id = video.get('videoId')
+                            title = video.get('title', {}).get('runs', [{}])[0].get('text')
+                            channel = video.get('ownerText', {}).get('runs', [{}])[0].get('text')
+                            thumbnail_url = video.get('thumbnail', {}).get('thumbnails', [{}])[-1].get('url') # Get highest quality thumbnail
+
+                            if video_id and title:
+                                results.append({
+                                    "title": title,
+                                    "channel": channel,
+                                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                                    "thumbnail": thumbnail_url
+                                })
+                                if len(results) >= 10: # Limit results
+                                    break
+                    if len(results) >= 10:
+                        break
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Network error during YouTube search: {e}")
+    except Exception as e:
+        print(f"Error parsing YouTube search results: {e}")
+    
+    return results
+
+
+@flask_app.route("/api/search")
+def search_youtube_api():
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "Query parameter is missing"}), 400
+    
+    search_results = perform_youtube_search(query)
+    return jsonify({"results": search_results})
+
+
+@flask_app.route("/", methods=["GET"]) # Changed to only GET
 def index():
-    if request.method == "POST":
-        url = request.form.get("url", "").strip()
-        username = request.form.get("username", "Anonymous").strip()
-        user_ip = request.remote_addr or "Unknown"
-
-        if not url:
-            flash("Please enter a URL.", "error")
-        elif is_valid_youtube_url(url):
-            title = get_youtube_title(url)
-
-            with queue_lock:
-                item = QueueItem(
-                    url=url,
-                    title=title,
-                    ip=str(user_ip),
-                    username=username,
-                    added_at=datetime.datetime.now().strftime("%H:%M:%S"),
-                )
-                music_playlist.append(item)
-            flash(f"Successfully added '{title}'!", "success")
-        else:
-            flash("Invalid YouTube URL.", "error")
-        return redirect(url_for("index"))
-
     with queue_lock:
         return render_template_string(
             HTML_TEMPLATE,
@@ -337,6 +571,34 @@ def player():
 def current_song():
     with queue_lock:
         return jsonify({"video_id": current_video_id})
+
+
+@flask_app.route("/api/add_to_queue", methods=["POST"])
+def add_to_queue_api():
+    url = request.form.get("url", "").strip()
+    username = request.form.get("username", "Anonymous").strip()
+    title_from_search = request.form.get("title_from_search")
+    user_ip = request.remote_addr or "Unknown"
+
+    if not url:
+        return jsonify({"status": "error", "message": "URL is missing."}), 400
+    
+    if not is_valid_youtube_url(url):
+        return jsonify({"status": "error", "message": "Invalid YouTube URL."}), 400
+
+    title = title_from_search if title_from_search else get_youtube_title(url)
+
+    with queue_lock:
+        item = QueueItem(
+            url=url,
+            title=title,
+            ip=str(user_ip),
+            username=username,
+            added_at=datetime.datetime.now().strftime("%H:%M:%S"),
+        )
+        music_playlist.append(item)
+    
+    return jsonify({"status": "success", "message": f"Successfully added '{title}'!"})
 
 
 def run_flask():
@@ -405,6 +667,7 @@ class MusicQueueApp(App):
         ("d", "delete_item", "Reject Selected"),
         ("space", "play_item", "Play Selected"),
         ("e", "export_playlist", "Export Played"),
+        ("a", "add_from_search", "Add Selected Search Result"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -418,6 +681,12 @@ class MusicQueueApp(App):
                 yield DataTable(id="played-table")
             with TabPane("Rejected History", id="tab-rejected"):
                 yield DataTable(id="rejected-table")
+            with TabPane("YouTube Search", id="tab-search"):
+                with Vertical():
+                    with Horizontal(id="search-input-container"):
+                        yield Input(placeholder="Search YouTube...", id="search-query-input")
+                        yield Button("Search", id="search-btn", variant="primary")
+                    yield DataTable(id="search-results-table")
 
         with Container(id="input-container"):
             yield Label("Add Local URL:")
@@ -445,6 +714,11 @@ class MusicQueueApp(App):
         r_table = self.query_one("#rejected-table", DataTable)
         r_table.cursor_type = "row"
         r_table.add_columns("Title", "User", "URL", "Rejected At")
+
+        # Setup Search Results Table
+        s_table = self.query_one("#search-results-table", DataTable)
+        s_table.cursor_type = "row"
+        s_table.add_columns("Title", "Channel", "URL")
 
         self.set_interval(1.0, self.refresh_tables)
         self.refresh_tables()
@@ -583,10 +857,14 @@ class MusicQueueApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "add-btn":
             self.add_local_url()
+        elif event.button.id == "search-btn":
+            self.action_search_youtube()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "url-input":
             self.add_local_url()
+        elif event.input.id == "search-query-input":
+            self.action_search_youtube()
 
     def add_local_url(self) -> None:
         input_widget = self.query_one("#url-input", Input)
@@ -617,6 +895,74 @@ class MusicQueueApp(App):
 
         self.notify(f"Added '{title}'!")
         self.refresh_tables()
+
+    # --- New TUI Search and Add from Search functionality ---
+    def action_search_youtube(self) -> None:
+        tabbed = self.query_one(TabbedContent)
+        if tabbed.active != "tab-search":
+            self.notify("Please switch to the 'YouTube Search' tab to search.", severity="warning")
+            return
+
+        search_input = self.query_one("#search-query-input", Input)
+        query = search_input.value.strip()
+        if not query:
+            self.notify("Please enter a search query.", severity="warning")
+            return
+        
+        self.notify(f"Searching YouTube for '{query}'...", severity="information")
+        search_input.value = "" # Clear search input
+        self.query_one("#search-results-table", DataTable).clear() # Clear previous results
+        self.search_youtube_worker(query)
+
+    @work(thread=True)
+    def search_youtube_worker(self, query: str) -> None:
+        try:
+            results = perform_youtube_search(query) # Use the shared search function
+            self.call_from_thread(self._display_search_results, results)
+        except Exception as e:
+            self.call_from_thread(self.notify, f"Error during YouTube search: {e}", severity="error")
+
+    def _display_search_results(self, results: List[Dict[str, str]]) -> None:
+        s_table = self.query_one("#search-results-table", DataTable)
+        s_table.clear()
+        if not results:
+            self.notify("No YouTube results found.", severity="information")
+            return
+
+        for idx, result in enumerate(results):
+            s_table.add_row(
+                result.get("title", "N/A"),
+                result.get("channel", "N/A"),
+                result.get("url", "N/A"),
+                key=f"search_result_{idx}"
+            )
+        self.notify(f"Found {len(results)} YouTube results.", severity="information")
+
+    def action_add_from_search(self) -> None:
+        tabbed = self.query_one(TabbedContent)
+        if tabbed.active != "tab-search":
+            return # Only allow adding from the search tab
+
+        s_table = self.query_one("#search-results-table", DataTable)
+        row_key = s_table.coordinate_to_cell_key(s_table.cursor_coordinate).row_key
+        if row_key:
+            row_index = s_table.get_row_index(row_key)
+            row_data = s_table.get_row(row_key)
+            
+            title = row_data[0] # Title is the first column
+            url = row_data[2]   # URL is the third column
+
+            with queue_lock:
+                item = QueueItem(
+                    url=url,
+                    title=title,
+                    ip="Localhost (TUI Search)",
+                    username="Host (You)",
+                    added_at=datetime.datetime.now().strftime("%H:%M:%S"),
+                )
+                music_playlist.append(item)
+            self.notify(f"Added '{title}' from search to queue!", severity="success")
+            self.refresh_tables() # Refresh all tables to show new item in queue
 
 
 if __name__ == "__main__":
