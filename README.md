@@ -36,6 +36,14 @@ You get a hackers-only Terminal User Interface (TUI).
 - **Wait Time Calculator:** sophisticated math (current index * 4 minutes) to keep them patient.
 - **Zero Database:** Everything is stored in RAM. If the vibe gets too weird, just restart the app and gaslight everyone into thinking it never happened.
 
+## UPGRADES
+
+- **Audio Player Integration**: Tired of opening YouTube videos in your browser? Now enjoy seamless audio playback directly in the app. No more accidentally clicking on recommended videos while trying to DJ.
+- **Persistent Playlist**: Your queue and rejection history now survive app restarts. Because sometimes you need to restart the app to gaslight your guests, but you don't want to lose track of who submitted the worst songs.
+- **Enhanced TUI Controls**: Even more satisfying keyboard controls and visual feedback. Your DJ powers have leveled up.
+- **Improved Error Handling**: Better validation for YouTube links means fewer crashes when someone inevitably submits a broken link.
+- **Modular Architecture**: Code is now organized in separate modules for better maintainability. Because even dictators deserve clean code.
+
 ## How to Install
 
 You need Python. If you don't know what that is, you probably shouldn't be entrusted with the aux cord anyway.
@@ -43,7 +51,7 @@ You need Python. If you don't know what that is, you probably shouldn't be entru
 1.  **Clone this repo** (or just copy the files, I'm not a cop).
 2.  **Install dependencies:**
     ```bash
-    pip install flask textual beautifulsoup4 requests
+    pip install flask textual beautifulsoup4 requests yt-dlp
     ```
 3.  **Run the beast:**
     ```bash
@@ -54,7 +62,7 @@ You need Python. If you don't know what that is, you probably shouldn't be entru
 
 Once the app is running, you will see a cool table in your terminal.
 
-- `SPACE`: **Play**. Opens the video in your default browser. The crowd goes wild.
+- `SPACE`: **Play**. Plays the audio in the application. The crowd goes wild.
 - `D`: **Delete/Reject**. Sends the song to the rejection pile. Use this when you see "Bagpipes 10 hour version".
 - `Q`: **Quit**. Shut it down. Go to bed.
 

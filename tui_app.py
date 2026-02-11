@@ -32,6 +32,7 @@ from utils import (
     extract_video_id,
     perform_youtube_search,
 )
+from audio_player import audio_player, play_next_in_queue
 
 
 # --- Textual TUI App ---
@@ -67,6 +68,7 @@ class MusicQueueApp(App):
         ("space", "play_item", "Play Selected"),
         ("e", "export_playlist", "Export Played"),
         ("a", "add_from_search", "Add Selected Search Result"),
+        ("r", "toggle_autoplay", "Toggle Autoplay"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -209,10 +211,19 @@ class MusicQueueApp(App):
 
                 if action == "play":
                     played_history.append(item)
-                    # Update current video ID instead of opening browser
+                    # Play audio instead of updating web player
                     vid_id = extract_video_id(item.url)
                     if vid_id:
                         current_video_id = vid_id
+                        # Play the audio using our new audio player
+                        # Use autoplay callback only if autoplay is enabled
+                        callback = play_next_in_queue if audio_player.is_autoplay_enabled() else None
+                        audio_player.extract_and_play_audio(
+                            item.url, 
+                            item.title, 
+                            item.username,
+                            on_completion_callback=callback
+                        )
                         self.notify(f"Now Playing: {item.title}")
                     else:
                         self.notify(
@@ -347,7 +358,7 @@ class MusicQueueApp(App):
         if row_key:
             row_index = s_table.get_row_index(row_key)
             row_data = s_table.get_row(row_key)
-            
+
             title = row_data[0] # Title is the first column
             url = row_data[2]   # URL is the third column
 
@@ -362,3 +373,9 @@ class MusicQueueApp(App):
                 music_playlist.append(item)
             self.notify(f"Added '{title}' from search to queue!", severity="success")
             self.refresh_tables() # Refresh all tables to show new item in queue
+
+    def action_toggle_autoplay(self) -> None:
+        """Toggle autoplay on/off"""
+        autoplay_status = audio_player.toggle_autoplay()
+        status_text = "enabled" if autoplay_status else "disabled"
+        self.notify(f"Autoplay {status_text}", severity="information")

@@ -394,35 +394,39 @@ PLAYER_TEMPLATE = """
     <style>
         body { background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
         #player-container { width: 80%; height: 80%; display: flex; justify-content: center; align-items: center; background: #222; border-radius: 10px; }
-        iframe { width: 100%; height: 100%; border: none; border-radius: 10px; }
-        .status { margin-top: 20px; font-size: 1.2em; color: #888; }
+        .status { margin-top: 20px; font-size: 1.2em; color: #888; text-align: center; }
+        .now-playing { font-size: 1.5em; color: #4CAF50; margin-bottom: 20px; }
     </style>
 </head>
 <body>
     <div id="player-container">
-        <div class="status">Waiting for music...</div>
+        <div class="status">
+            <div class="now-playing">Now Playing: <span id="current-song">Waiting for music...</span></div>
+            <div>Audio is playing on the host device</div>
+        </div>
     </div>
-    
+
     <script>
         let currentVideoId = null;
-        
+        let currentTitle = null;
+
         function pollForUpdates() {
             fetch('/api/current')
                 .then(response => response.json())
                 .then(data => {
                     if (data.video_id && data.video_id !== currentVideoId) {
                         currentVideoId = data.video_id;
-                        updatePlayer(currentVideoId);
+                        updatePlayer(data.title || 'Unknown Title');
                     }
                 })
                 .catch(err => console.error("Error polling:", err));
         }
-        
-        function updatePlayer(videoId) {
-            const container = document.getElementById('player-container');
-            container.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+
+        function updatePlayer(title) {
+            const titleElement = document.getElementById('current-song');
+            titleElement.textContent = title;
         }
-        
+
         // Poll every 2 seconds
         setInterval(pollForUpdates, 2000);
     </script>
@@ -461,7 +465,16 @@ def player():
 @flask_app.route("/api/current")
 def current_song():
     with queue_lock:
-        return jsonify({"video_id": current_video_id})
+        # Find the currently playing item to get its title
+        current_title = "Waiting for music..."
+        if current_video_id and played_history:
+            # Look for the most recently played item
+            for item in reversed(played_history):
+                if extract_video_id(item.url) == current_video_id:
+                    current_title = item.title
+                    break
+        
+        return jsonify({"video_id": current_video_id, "title": current_title})
 
 
 @flask_app.route("/api/add_to_queue", methods=["POST"])

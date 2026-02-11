@@ -1,3 +1,5 @@
 flask
 textual
 beautifulsoup4
+requests
+zeroconf
