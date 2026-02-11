@@ -172,6 +172,14 @@ HTML_TEMPLATE = """
 
         <div class="section">
             <h2>Current Queue</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                {% if playlist %}
+                    <div>
+                        <button onclick="downloadPlaylist()" style="width: auto; margin-top: 0; margin-right: 10px;">Download Current Queue</button>
+                        <button onclick="downloadCompletePlaylist()" style="width: auto; margin-top: 0;">Download Full Playlist</button>
+                    </div>
+                {% endif %}
+            </div>
             <div id="current-queue-section">
                 {% if playlist %}
                     <table>
@@ -204,6 +212,11 @@ HTML_TEMPLATE = """
         
         <div class="section">
              <h2>Recently Played</h2>
+             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                 {% if played %}
+                     <button onclick="downloadHistory('played')" style="width: auto; margin-top: 0;">Download Played History</button>
+                 {% endif %}
+             </div>
              {% if played %}
                 <table>
                     <thead>
@@ -227,9 +240,14 @@ HTML_TEMPLATE = """
                  <div class="empty-msg">No songs played yet.</div>
             {% endif %}
         </div>
-        
+
         <div class="section">
              <h2>Rejected Requests</h2>
+             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                 {% if rejected %}
+                     <button onclick="downloadHistory('rejected')" style="width: auto; margin-top: 0;">Download Rejected History</button>
+                 {% endif %}
+             </div>
              {% if rejected %}
                 <table>
                     <thead>
@@ -376,6 +394,153 @@ HTML_TEMPLATE = """
                 console.error('Error adding song from search results:', error);
                 showNotification('Error adding song to queue.', true);
             }
+        }
+
+        function downloadPlaylist() {
+            fetch('/api/download_playlist')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.playlist.length === 0) {
+                        showNotification('No songs in queue to download.', true);
+                        return;
+                    }
+                    
+                    // Create a text representation of the playlist
+                    let playlistText = "Moojik Playlist\\n";
+                    playlistText += "==============\\n\\n";
+                    
+                    data.playlist.forEach(item => {
+                        playlistText += `${item.position}. ${item.title}\\n`;
+                        playlistText += `   Submitted by: ${item.username}\\n`;
+                        playlistText += `   Link: ${item.url}\\n`;
+                        playlistText += `   Estimated wait: ${item.estimated_wait}\\n\\n`;
+                    });
+                    
+                    // Create a downloadable file
+                    const blob = new Blob([playlistText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'moojik-playlist.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 0);
+                })
+                .catch(error => {
+                    console.error('Error downloading playlist:', error);
+                    showNotification('Error downloading playlist.', true);
+                });
+        }
+
+        function downloadHistory(type) {
+            fetch(`/api/download_history/${type}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.history.length === 0) {
+                        showNotification(`No ${type} songs to download.`, true);
+                        return;
+                    }
+                    
+                    // Create a text representation of the history
+                    let historyText = `Moojik ${data.history_type} History\\n`;
+                    historyText += "=====================\\n\\n";
+                    
+                    data.history.forEach((item, index) => {
+                        historyText += `${index + 1}. ${item.title}\\n`;
+                        historyText += `   Submitted by: ${item.username}\\n`;
+                        historyText += `   ${data.history_type} at: ${item.processed_at}\\n\\n`;
+                    });
+                    
+                    // Create a downloadable file
+                    const blob = new Blob([historyText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `moojik-${type}-history.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 0);
+                })
+                .catch(error => {
+                    console.error('Error downloading history:', error);
+                    showNotification('Error downloading history.', true);
+                });
+        }
+
+        function downloadCompletePlaylist() {
+            fetch('/api/download_complete_playlist')
+                .then(response => response.json())
+                .then(data => {
+                    let playlistText = "Moojik Complete Playlist\\n";
+                    playlistText += "========================\\n\\n";
+                    
+                    // Add queued items
+                    if (data.queued.length > 0) {
+                        playlistText += "QUEUED SONGS:\\n";
+                        playlistText += "-------------\\n";
+                        data.queued.forEach(item => {
+                            playlistText += `${item.position}. ${item.title}\\n`;
+                            playlistText += `   Submitted by: ${item.username}\\n`;
+                            playlistText += `   Link: ${item.url}\\n`;
+                            playlistText += `   Estimated wait: ${item.estimated_wait}\\n\\n`;
+                        });
+                    }
+                    
+                    // Add played items
+                    if (data.played.length > 0) {
+                        playlistText += "PLAYED SONGS:\\n";
+                        playlistText += "-------------\\n";
+                        data.played.forEach((item, index) => {
+                            playlistText += `${index + 1}. ${item.title}\\n`;
+                            playlistText += `   Submitted by: ${item.username}\\n`;
+                            playlistText += `   Played at: ${item.processed_at}\\n\\n`;
+                        });
+                    }
+                    
+                    // Add rejected items
+                    if (data.rejected.length > 0) {
+                        playlistText += "REJECTED SONGS:\\n";
+                        playlistText += "---------------\\n";
+                        data.rejected.forEach((item, index) => {
+                            playlistText += `${index + 1}. ${item.title}\\n`;
+                            playlistText += `   Submitted by: ${item.username}\\n`;
+                            playlistText += `   Rejected at: ${item.processed_at}\\n\\n`;
+                        });
+                    }
+                    
+                    if (data.queued.length === 0 && data.played.length === 0 && data.rejected.length === 0) {
+                        playlistText += "No songs in any list.";
+                    }
+                    
+                    // Create a downloadable file
+                    const blob = new Blob([playlistText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'moojik-complete-playlist.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 0);
+                })
+                .catch(error => {
+                    console.error('Error downloading complete playlist:', error);
+                    showNotification('Error downloading complete playlist.', true);
+                });
         }
 
         // Initial refresh of the queue when the page loads
@@ -542,6 +707,86 @@ def queue_data_api():
             avg_duration=AVERAGE_SONG_DURATION_MIN,
         )
     return jsonify({"queue_html": queue_html})
+
+
+@flask_app.route("/api/download_playlist")
+def download_playlist_api():
+    with queue_lock:
+        playlist_data = []
+        for i, item in enumerate(music_playlist):
+            playlist_data.append({
+                "position": i + 1,
+                "title": item.title,
+                "username": item.username,
+                "url": item.url,
+                "estimated_wait": f"{i * AVERAGE_SONG_DURATION_MIN} mins"
+            })
+    
+    return jsonify({"playlist": playlist_data})
+
+
+@flask_app.route("/api/download_history/<history_type>")
+def download_history_api(history_type):
+    with queue_lock:
+        if history_type == 'played':
+            history_data = []
+            for item in played_history:
+                history_data.append({
+                    "title": item.title,
+                    "username": item.username,
+                    "processed_at": item.processed_at
+                })
+            return jsonify({"history_type": "Played", "history": history_data})
+        elif history_type == 'rejected':
+            history_data = []
+            for item in rejected_history:
+                history_data.append({
+                    "title": item.title,
+                    "username": item.username,
+                    "processed_at": item.processed_at
+                })
+            return jsonify({"history_type": "Rejected", "history": history_data})
+        else:
+            return jsonify({"error": "Invalid history type. Use 'played' or 'rejected'."}), 400
+
+
+@flask_app.route("/api/download_complete_playlist")
+def download_complete_playlist_api():
+    with queue_lock:
+        # Combine queued, played, and rejected items
+        complete_playlist = {
+            "queued": [],
+            "played": [],
+            "rejected": []
+        }
+        
+        # Add queued items
+        for i, item in enumerate(music_playlist):
+            complete_playlist["queued"].append({
+                "position": i + 1,
+                "title": item.title,
+                "username": item.username,
+                "url": item.url,
+                "estimated_wait": f"{i * AVERAGE_SONG_DURATION_MIN} mins"
+            })
+        
+        # Add played items
+        for item in played_history:
+            complete_playlist["played"].append({
+                "title": item.title,
+                "username": item.username,
+                "processed_at": item.processed_at
+            })
+        
+        # Add rejected items
+        for item in rejected_history:
+            complete_playlist["rejected"].append({
+                "title": item.title,
+                "username": item.username,
+                "processed_at": item.processed_at
+            })
+    
+    return jsonify(complete_playlist)
 
 
 def run_flask():

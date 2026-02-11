@@ -43,6 +43,7 @@ You get a hackers-only Terminal User Interface (TUI).
 - **Enhanced TUI Controls**: Even more satisfying keyboard controls and visual feedback. Your DJ powers have leveled up.
 - **Improved Error Handling**: Better validation for YouTube links means fewer crashes when someone inevitably submits a broken link.
 - **Modular Architecture**: Code is now organized in separate modules for better maintainability. Because even dictators deserve clean code.
+- **Download Playlist Feature**: Guests can now download the current queue, played history, rejected history, or the complete playlist as text files directly from the web UI. Perfect for keeping track of the musical journey or shaming the culprits later.
 
 ## How to Install
 

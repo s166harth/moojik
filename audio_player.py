@@ -44,28 +44,32 @@ class AudioPlayer:
                 
                 # Play using MPV with controls visible
                 logger.info(f"Playing with MPV: {audio_url}")
-                cmd = ['mpv', '--force-window=yes', '--idle=yes', audio_url]
+                cmd = ['mpv', '--no-video', '--force-window=yes', '--keep-open=no', audio_url]
                 
-                # Start MPV process with redirected output to avoid TUI interference
-                process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Start MPV process and capture output for debugging
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 # Monitor the process
                 try:
-                    # Wait for the process to complete
-                    process.wait()
-                    
+                    # Wait for the process to complete and capture output
+                    stdout, stderr = process.communicate()
+
+                    # Log the output for debugging
+                    logger.info(f"MPV stdout: {stdout.decode()}")
+                    logger.info(f"MPV stderr: {stderr.decode()}")
+
                     if self.should_stop:
                         logger.info("Playback stopped by user")
                     else:
                         logger.info(f"Finished playing: {title}")
-                
+
                 except subprocess.TimeoutExpired:
-                    # This shouldn't happen with wait() but just in case
+                    # This shouldn't happen with communicate() but just in case
                     if self.should_stop:
                         logger.info("Playback stopped by user")
                         process.terminate()
                         try:
-                            process.wait(timeout=1)
+                            process.communicate(timeout=1)  # Changed from wait to communicate
                         except subprocess.TimeoutExpired:
                             process.kill()
                 
